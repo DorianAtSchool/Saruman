@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip3:*)",
+      "WebSearch",
+      "Bash(source ../venv/bin/activate)",
+      "Bash(python:*)"
+    ]
+  }
+}
