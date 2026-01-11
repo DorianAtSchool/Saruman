@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { HomePage, SetupPage, SimulationPage, ResultsPage } from './pages';
+import { HomePage, SetupPage, AttackConfigPage, RunningPage, ResultsPage } from './pages';
 
 function App() {
   return (
@@ -8,7 +8,8 @@ function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/session/:sessionId/setup" element={<SetupPage />} />
-          <Route path="/session/:sessionId/run" element={<SimulationPage />} />
+          <Route path="/session/:sessionId/run" element={<AttackConfigPage />} />
+          <Route path="/session/:sessionId/running" element={<RunningPage />} />
           <Route path="/session/:sessionId/results" element={<ResultsPage />} />
         </Routes>
       </div>

@@ -1,4 +1,5 @@
 export { HomePage } from './HomePage';
 export { SetupPage } from './SetupPage';
-export { SimulationPage } from './SimulationPage';
+export { AttackConfigPage } from './SimulationPage';
+export { RunningPage } from './RunningPage';
 export { ResultsPage } from './ResultsPage';

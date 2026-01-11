@@ -32,7 +32,11 @@ SECRET_GENERATORS = {
         "data_type": "string",
         "generator": lambda: fake.email(),
     },
-    "medical_condition": {
+    "dob": {
+        "data_type": "date",
+        "generator": lambda: fake.date_of_birth(minimum_age=18, maximum_age=85).strftime("%m/%d/%Y"),
+    },
+    "medical": {
         "data_type": "string",
         "generator": lambda: choice(["Diabetes Type 2", "Hypertension", "Asthma", "Anxiety Disorder", "Depression"]),
     },

@@ -137,7 +137,7 @@ async def generate_session_secrets(
     return secrets
 
 
-@router.get("/sessions/{session_id}/secrets", response_model=list[SecretResponse])
+@router.get("/sessions/{session_id}/secrets", response_model=list[SecretWithValueResponse])
 async def list_secrets(session_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Secret).where(Secret.session_id == session_id))
     return result.scalars().all()

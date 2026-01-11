@@ -44,6 +44,25 @@ async def start_simulation(
     if not secrets:
         raise HTTPException(status_code=400, detail="No secrets to protect")
 
+    # If session was already run, reset it first
+    if session.status in ("completed", "failed", "running"):
+        # Delete old conversations and messages
+        result = await db.execute(
+            select(Conversation).where(Conversation.session_id == session_id)
+        )
+        old_conversations = result.scalars().all()
+        for conv in old_conversations:
+            # Messages cascade delete with conversation
+            await db.delete(conv)
+        
+        # Reset secret leak status
+        for secret in secrets:
+            secret.is_leaked = False
+        
+        # Reset session scores
+        session.security_score = None
+        session.usability_score = None
+
     # Mark session as running
     session.status = "running"
     await db.commit()

@@ -14,20 +14,22 @@ import type { Session, Secret, RegexRule } from '../types';
 import { SECRET_TYPES } from '../types';
 
 const MODELS = [
+  // Groq Models (Free tier - very fast) - Default
+  { value: 'groq/llama-3.1-8b-instant', label: 'Llama 3.1 8B (Groq) - Free' },
+  { value: 'groq/gemma2-9b-it', label: 'Gemma 2 9B (Groq) - Free' },
+  { value: 'groq/mixtral-8x7b-32768', label: 'Mixtral 8x7B (Groq) - Free' },
   // Commercial Models
   { value: 'gemini/gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash Lite' },
   { value: 'gemini/gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite' },
   { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
   { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku' },
-  // Groq Models (Free tier - very fast)
-  { value: 'groq/llama-3.1-8b-instant', label: 'Llama 3.1 8B (Groq) - Free' },
-  { value: 'groq/gemma2-9b-it', label: 'Gemma 2 9B (Groq) - Free' },
-  { value: 'groq/mixtral-8x7b-32768', label: 'Mixtral 8x7B (Groq) - Free' },
   // Open Source via HuggingFace
   { value: 'huggingface/together/meta-llama/Llama-3.2-3B-Instruct', label: 'Llama 3.2 3B (Together)' },
   { value: 'huggingface/together/deepseek-ai/DeepSeek-R1', label: 'DeepSeek R1 (Together)' },
   { value: 'huggingface/sambanova/Qwen/Qwen2.5-72B-Instruct', label: 'Qwen 2.5 72B (Sambanova)' },
 ];
+
+export { MODELS };
 
 export function SetupPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -41,14 +43,12 @@ export function SetupPage() {
   // Form state
   const [systemPrompt, setSystemPrompt] = useState('');
   const [modelName, setModelName] = useState(MODELS[0].value);
-  const [attackerModel, setAttackerModel] = useState(MODELS[0].value);
   const [judgeEnabled, setJudgeEnabled] = useState(false);
   const [judgePrompt, setJudgePrompt] = useState('');
   const [regexInputRules, setRegexInputRules] = useState<RegexRule[]>([]);
   const [regexOutputRules, setRegexOutputRules] = useState<RegexRule[]>([]);
 
-  // Secret generation
-  const [secretCount, setSecretCount] = useState(3);
+  // Secret generation - selectedTypes drives which secrets exist
   const [selectedTypes, setSelectedTypes] = useState<string[]>(['ssn', 'phone', 'email']);
   const [newSecretKey, setNewSecretKey] = useState('');
   const [newSecretValue, setNewSecretValue] = useState('');
@@ -70,10 +70,14 @@ export function SetupPage() {
       ]);
       setSession(sessionData);
       setSecrets(secretsData);
+      // Update selectedTypes based on existing secrets
+      if (secretsData.length > 0) {
+        const existingTypes = secretsData.map(s => s.key).filter(k => SECRET_TYPES.includes(k as any));
+        setSelectedTypes(existingTypes);
+      }
       if (configData) {
         setSystemPrompt(configData.system_prompt || '');
         setModelName(configData.model_name || MODELS[0].value);
-        setAttackerModel(configData.attacker_model || configData.model_name || MODELS[0].value);
         setJudgeEnabled(configData.judge_enabled || false);
         setJudgePrompt(configData.judge_prompt || '');
         setRegexInputRules(configData.regex_input_rules || []);
@@ -87,14 +91,26 @@ export function SetupPage() {
   }
 
   async function handleGenerateSecrets() {
-    if (!sessionId) return;
+    if (!sessionId || selectedTypes.length === 0) return;
     setSaving(true);
     try {
+      // First, delete existing secrets that are in selectedTypes (will be regenerated)
+      const secretsToDelete = secrets.filter(s => selectedTypes.includes(s.key));
+      for (const secret of secretsToDelete) {
+        await deleteSecret(sessionId, secret.id);
+      }
+      
+      // Keep custom secrets (those not in SECRET_TYPES)
+      const customSecrets = secrets.filter(s => !SECRET_TYPES.includes(s.key as any));
+      
+      // Generate new secrets for selected types
       const newSecrets = await generateSecrets(sessionId, {
-        count: secretCount,
+        count: selectedTypes.length,
         types: selectedTypes,
       });
-      setSecrets(newSecrets);
+      
+      // Merge custom secrets with newly generated ones
+      setSecrets([...customSecrets, ...newSecrets]);
     } catch (error) {
       console.error('Failed to generate secrets:', error);
     } finally {
@@ -104,6 +120,11 @@ export function SetupPage() {
 
   async function handleAddSecret() {
     if (!sessionId || !newSecretKey || !newSecretValue) return;
+    // Check for duplicate keys
+    if (secrets.some(s => s.key.toLowerCase() === newSecretKey.toLowerCase())) {
+      alert(`A secret with key "${newSecretKey}" already exists.`);
+      return;
+    }
     setSaving(true);
     try {
       const newSecret = await addSecret(sessionId, newSecretKey, newSecretValue);
@@ -134,7 +155,6 @@ export function SetupPage() {
       await updateDefenseConfig(sessionId, {
         system_prompt: systemPrompt,
         model_name: modelName,
-        attacker_model: attackerModel,
         judge_enabled: judgeEnabled,
         judge_prompt: judgePrompt || null,
         regex_input_rules: regexInputRules,
@@ -201,42 +221,38 @@ export function SetupPage() {
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-100">
-          Setup: {session?.name || 'New Session'}
-        </h1>
-        <Button
-          variant="primary"
-          onClick={() => navigate(`/session/${sessionId}/run`)}
-          disabled={secrets.length === 0}
-        >
-          Continue to Simulation
-        </Button>
+        <div className="flex items-center gap-4">
+          <Button variant="secondary" onClick={() => navigate('/')}>
+            ← Back
+          </Button>
+          <h1 className="text-3xl font-bold text-gray-100">
+            Setup: {session?.name || 'New Session'}
+          </h1>
+        </div>
       </div>
 
       {/* Secrets Section */}
-      <Card title="Secrets to Protect">
+      <Card title={`Secrets to Protect (${secrets.length} selected)`}>
         <div className="space-y-4">
-          <div className="flex gap-4 items-end">
-            <div className="w-32">
-              <Input
-                label="Count"
-                type="number"
-                min={1}
-                max={10}
-                value={secretCount}
-                onChange={(e) => setSecretCount(Number(e.target.value))}
-              />
-            </div>
-            <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-300 mb-1">
-                Secret Types
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {SECRET_TYPES.map((type) => (
-                  <label key={type} className="flex items-center gap-1">
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-300">
+              Select Secret Types
+            </label>
+            <div className="flex flex-wrap gap-3">
+              {SECRET_TYPES.map((type) => {
+                const isSelected = selectedTypes.includes(type);
+                return (
+                  <label 
+                    key={type} 
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
+                      isSelected 
+                        ? 'bg-blue-900/30 border-blue-700 text-blue-300' 
+                        : 'bg-gray-800 border-gray-700 text-gray-300 hover:border-gray-600'
+                    }`}
+                  >
                     <input
                       type="checkbox"
-                      checked={selectedTypes.includes(type)}
+                      checked={isSelected}
                       onChange={(e) => {
                         if (e.target.checked) {
                           setSelectedTypes([...selectedTypes, type]);
@@ -246,16 +262,25 @@ export function SetupPage() {
                       }}
                       className="rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500"
                     />
-                    <span className="text-sm text-gray-300">{type}</span>
+                    <span className="text-sm font-medium">{type}</span>
                   </label>
-                ))}
-              </div>
+                );
+              })}
             </div>
-            <Button onClick={handleGenerateSecrets} disabled={saving}>
-              Generate
-            </Button>
+            <div className="flex gap-2 mt-3">
+              <Button 
+                onClick={handleGenerateSecrets} 
+                disabled={saving || selectedTypes.length === 0}
+              >
+                Generate Values for Selected Types
+              </Button>
+              {selectedTypes.length === 0 && (
+                <span className="text-sm text-yellow-400 self-center">
+                  Select at least one type
+                </span>
+              )}
+            </div>
           </div>
-
           {secrets.length > 0 && (
             <div className="border border-gray-700 rounded-lg overflow-hidden">
               <table className="w-full">
@@ -319,20 +344,12 @@ export function SetupPage() {
       {/* Defense Configuration */}
       <Card title="Defense Configuration">
         <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Select
-              label="Defender Model"
-              options={MODELS}
-              value={modelName}
-              onChange={(e) => setModelName(e.target.value)}
-            />
-            <Select
-              label="Attacker Model"
-              options={MODELS}
-              value={attackerModel}
-              onChange={(e) => setAttackerModel(e.target.value)}
-            />
-          </div>
+          <Select
+            label="Defender Model"
+            options={MODELS}
+            value={modelName}
+            onChange={(e) => setModelName(e.target.value)}
+          />
 
           <TextArea
             label="System Prompt"
@@ -458,10 +475,12 @@ export function SetupPage() {
 
       <div className="flex justify-end gap-4">
         <Button
+          variant="primary"
+          size="lg"
           onClick={handleContinueToSimulation}
           disabled={secrets.length === 0 || saving}
         >
-          {saving ? 'Saving...' : 'Continue to Simulation'}
+          {saving ? 'Saving...' : 'Configure Attack →'}
         </Button>
       </div>
     </div>

@@ -41,6 +41,8 @@ Generate ONLY your question to the AI, nothing else."""
         secrets_keys: list[str],
         turn: int,
         history: list[dict],
+        force_benign: bool = False,
+        model_override: str | None = None,
     ) -> str:
         """Generate a benign question (override to ignore secrets_keys)."""
         import litellm
@@ -51,7 +53,7 @@ Generate ONLY your question to the AI, nothing else."""
         ]
 
         response = await litellm.acompletion(
-            model=self.model,
+            model=model_override or self.model,
             messages=messages,
             max_tokens=150,
             temperature=0.9,
