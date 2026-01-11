@@ -10,6 +10,8 @@ from app.schemas import (
     SimulationStatusResponse,
     ResultsResponse,
     ConversationResponse,
+    SessionResponse,
+    SecretResultResponse,
 )
 from app.services.simulation import run_simulation
 
@@ -102,6 +104,9 @@ async def get_results(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    result = await db.execute(select(Secret).where(Secret.session_id == session_id))
+    secrets = result.scalars().all()
+
     result = await db.execute(
         select(Conversation)
         .where(Conversation.session_id == session_id)
@@ -110,9 +115,7 @@ async def get_results(
     conversations = result.scalars().all()
 
     return ResultsResponse(
-        session_id=session_id,
-        status=session.status,
-        security_score=session.security_score,
-        usability_score=session.usability_score,
+        session=SessionResponse.model_validate(session),
+        secrets=[SecretResultResponse.model_validate(s) for s in secrets],
         conversations=[ConversationResponse.model_validate(c) for c in conversations],
     )

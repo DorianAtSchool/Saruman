@@ -432,9 +432,15 @@ curl -X PUT http://localhost:8000/api/sessions/{id}/defense \
 
 ### Run Simulation
 ```bash
+# Run with 1 attacker (recommended for testing)
 curl -X POST http://localhost:8000/api/sessions/{id}/run \
   -H "Content-Type: application/json" \
-  -d '{"personas": ["utilitarian", "admin"], "max_turns": 5}'
+  -d '{"personas": ["utilitarian"], "max_turns": 2}'
+
+# Or run all 7 attackers (slower, uses more API quota)
+curl -X POST http://localhost:8000/api/sessions/{id}/run \
+  -H "Content-Type: application/json" \
+  -d '{"max_turns": 3}'
 ```
 
 ### Get Results

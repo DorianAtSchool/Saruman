@@ -53,8 +53,11 @@ class RegexRule(BaseModel):
 
 
 class DefenseConfigCreate(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
     system_prompt: str
     model_name: str = "gpt-4o-mini"
+    attacker_model: str | None = None
     regex_input_rules: list[RegexRule] = []
     regex_output_rules: list[RegexRule] = []
     judge_enabled: bool = False
@@ -63,17 +66,17 @@ class DefenseConfigCreate(BaseModel):
 
 
 class DefenseConfigResponse(BaseModel):
+    model_config = {"protected_namespaces": (), "from_attributes": True}
+
     id: str
     system_prompt: str
     model_name: str
+    attacker_model: str | None
     regex_input_rules: list[dict]
     regex_output_rules: list[dict]
     judge_enabled: bool
     judge_prompt: str | None
     judge_model: str | None
-
-    class Config:
-        from_attributes = True
 
 
 # Conversation schemas
@@ -120,7 +123,10 @@ class ConversationResponse(BaseModel):
     persona: str
     outcome: str
     secrets_leaked: list[str]           # Keys of leaked secrets (defender perspective)
-    extraction_results: list[dict] = []  # Detailed extraction scoring
+    extraction_attempts: list[dict] = []  # Raw attacker guesses
+    extraction_results: list[dict] = []   # Detailed extraction scoring
+    attacker_score: int = 0              # Correct key-value pairs
+    defender_leaks: int = 0              # Values exposed (regardless of key)
     messages: list[MessageResponse] = []
 
     class Config:
@@ -140,11 +146,20 @@ class SimulationStatusResponse(BaseModel):
     current_persona: str | None
 
 
+class SecretResultResponse(BaseModel):
+    id: str
+    key: str
+    value: str
+    data_type: str
+    is_leaked: bool
+
+    class Config:
+        from_attributes = True
+
+
 class ResultsResponse(BaseModel):
-    session_id: str
-    status: str
-    security_score: float | None
-    usability_score: float | None
+    session: SessionResponse
+    secrets: list[SecretResultResponse]
     conversations: list[ConversationResponse]
 
 

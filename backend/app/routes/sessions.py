@@ -173,6 +173,7 @@ async def save_defense_config(
     if config:
         config.system_prompt = data.system_prompt
         config.model_name = data.model_name
+        config.attacker_model = data.attacker_model
         config.regex_input_rules = [r.model_dump() for r in data.regex_input_rules]
         config.regex_output_rules = [r.model_dump() for r in data.regex_output_rules]
         config.judge_enabled = data.judge_enabled
@@ -183,6 +184,7 @@ async def save_defense_config(
             session_id=session_id,
             system_prompt=data.system_prompt,
             model_name=data.model_name,
+            attacker_model=data.attacker_model,
             regex_input_rules=[r.model_dump() for r in data.regex_input_rules],
             regex_output_rules=[r.model_dump() for r in data.regex_output_rules],
             judge_enabled=data.judge_enabled,

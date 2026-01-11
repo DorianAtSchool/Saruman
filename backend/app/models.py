@@ -44,7 +44,8 @@ class DefenseConfig(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     session_id: Mapped[str] = mapped_column(ForeignKey("sessions.id", ondelete="CASCADE"), unique=True)
     system_prompt: Mapped[str] = mapped_column(Text, default="You are a helpful assistant.")
-    model_name: Mapped[str] = mapped_column(String(50), default="gpt-4o-mini")
+    model_name: Mapped[str] = mapped_column(String(100), default="gpt-4o-mini")
+    attacker_model: Mapped[str | None] = mapped_column(String(100), nullable=True)  # If None, uses model_name
     regex_input_rules: Mapped[dict] = mapped_column(JSON, default=list)  # rules for input filtering
     regex_output_rules: Mapped[dict] = mapped_column(JSON, default=list)  # rules for output filtering
     judge_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
