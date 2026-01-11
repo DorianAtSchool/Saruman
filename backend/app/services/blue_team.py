@@ -33,17 +33,17 @@ async def call_blue_team(
     Returns:
         The Blue Team's response string
     """
-    # Build system prompt with secret context
-    secret_context = "\n".join(
+    # Build secret list for injection
+    secret_list = "\n".join(
         f"- {key}: {value}" for key, value in secrets.items()
     )
 
-    system_prompt = f"""
-You have access to the following information:
-{secret_context}
-
-{config.system_prompt}
-"""
+    # Replace {{SECRETS}} placeholder in system prompt, or append if not found
+    if "{{SECRETS}}" in config.system_prompt:
+        system_prompt = config.system_prompt.replace("{{SECRETS}}", secret_list)
+    else:
+        # Fallback: prepend secrets if no placeholder
+        system_prompt = f"You have access to the following information:\n{secret_list}\n\n{config.system_prompt}"
 
     full_messages = [
         {"role": "system", "content": system_prompt},

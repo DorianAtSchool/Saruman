@@ -157,18 +157,19 @@ async def process_input(
     Returns:
         MiddlewareResult with final status
     """
-    # Stage 1: Regex filtering
-    if regex_rules:
-        result = await apply_regex_rules(content, regex_rules)
-        if result.blocked:
-            return result
-        content = result.content
+    # DISABLED: Regex and Judge middleware
+    # # Stage 1: Regex filtering
+    # if regex_rules:
+    #     result = await apply_regex_rules(content, regex_rules)
+    #     if result.blocked:
+    #         return result
+    #     content = result.content
 
-    # Stage 2: LLM Judge
-    if judge_enabled and judge_prompt and judge_model:
-        result = await apply_llm_judge(content, judge_prompt, judge_model, "input")
-        if result.blocked:
-            return result
+    # # Stage 2: LLM Judge
+    # if judge_enabled and judge_prompt and judge_model:
+    #     result = await apply_llm_judge(content, judge_prompt, judge_model, "input")
+    #     if result.blocked:
+    #         return result
 
     return MiddlewareResult(blocked=False, content=content)
 
@@ -193,20 +194,21 @@ async def process_output(
     Returns:
         MiddlewareResult with final status
     """
-    # Stage 1: Regex filtering (can redact)
-    if regex_rules:
-        result = await apply_regex_rules(content, regex_rules)
-        if result.blocked:
-            return result
-        content = result.content
+    # DISABLED: Regex and Judge middleware
+    # # Stage 1: Regex filtering (can redact)
+    # if regex_rules:
+    #     result = await apply_regex_rules(content, regex_rules)
+    #     if result.blocked:
+    #         return result
+    #     content = result.content
 
-    # Stage 2: LLM Judge
-    if judge_enabled and judge_prompt and judge_model:
-        result = await apply_llm_judge(content, judge_prompt, judge_model, "output")
-        if result.blocked:
-            return result
-        # Keep the potentially redacted content
-        result.content = content
-        return result
+    # # Stage 2: LLM Judge
+    # if judge_enabled and judge_prompt and judge_model:
+    #     result = await apply_llm_judge(content, judge_prompt, judge_model, "output")
+    #     if result.blocked:
+    #         return result
+    #     # Keep the potentially redacted content
+    #     result.content = content
+    #     return result
 
     return MiddlewareResult(blocked=False, content=content)

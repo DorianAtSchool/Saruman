@@ -13,6 +13,7 @@ from app.config import get_settings
 from app.models import Session, Secret, DefenseConfig
 from app.personas import PERSONAS
 from app.services.red_team import run_persona_conversation
+from app.services.events import emit_simulation_complete, emit_error
 
 settings = get_settings()
 
@@ -129,12 +130,16 @@ async def run_simulation(
                     secret.is_leaked = True
 
             await db.commit()
+            
+            # Emit simulation complete event
+            await emit_simulation_complete(session_id, security_score, usability_score)
 
         except Exception as e:
             # Mark session as failed
             try:
                 session.status = "failed"
                 await db.commit()
+                await emit_error(session_id, str(e))
             except:
                 pass
             raise e

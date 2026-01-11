@@ -14,6 +14,7 @@ from app.personas import get_persona
 from app.services.blue_team import call_blue_team
 from app.services.middleware import process_input, process_output
 from app.services.extraction import extract_and_score
+from app.services.events import emit_persona_start, emit_message, emit_persona_complete
 
 
 @dataclass
@@ -69,6 +70,9 @@ async def run_persona_conversation(
     await db.commit()
     await db.refresh(conversation)
 
+    # Emit persona start event
+    await emit_persona_start(session_id, persona_name)
+
     # Run multi-turn conversation
     messages = []  # LLM conversation history
     recorded_messages = []  # For result
@@ -95,11 +99,15 @@ async def run_persona_conversation(
             turn_number=turn,
         )
         db.add(red_msg)
+        await db.commit()  # Commit immediately so polling can see it
         recorded_messages.append({
             "role": "red_team",
             "content": red_message,
             "turn": turn,
         })
+        
+        # Emit red team message event
+        await emit_message(session_id, persona_name, "red_team", red_message, turn)
 
         # Apply input middleware
         input_result = await process_input(
@@ -122,6 +130,7 @@ async def run_persona_conversation(
                 turn_number=turn,
             )
             db.add(blue_msg)
+            await db.commit()  # Commit immediately so polling can see it
             messages.append({"role": "user", "content": red_message})
             messages.append({"role": "assistant", "content": blue_content})
             recorded_messages.append({
@@ -131,6 +140,8 @@ async def run_persona_conversation(
                 "blocked": True,
                 "reason": input_result.reason,
             })
+            # Emit blocked blue team message
+            await emit_message(session_id, persona_name, "blue_team", blue_content, turn, blocked=True, reason=input_result.reason)
             continue
 
         # Call Blue Team LLM
@@ -164,6 +175,7 @@ async def run_persona_conversation(
             turn_number=turn,
         )
         db.add(blue_msg)
+        await db.commit()  # Commit immediately so polling can see it
 
         final_response = output_result.content if not output_result.blocked else blue_response
         messages.append({"role": "assistant", "content": final_response})
@@ -174,14 +186,16 @@ async def run_persona_conversation(
             "blocked": output_result.blocked,
             "reason": output_result.reason,
         })
-
-    await db.commit()
+        
+        # Emit blue team message
+        await emit_message(session_id, persona_name, "blue_team", final_response, turn, blocked=output_result.blocked, reason=output_result.reason)
 
     # === EXTRACTION PHASE ===
     # Skip for benign_user (they don't try to extract secrets)
     if persona_name == "benign_user":
         conversation.outcome = "completed"
         await db.commit()
+        await emit_persona_complete(session_id, persona_name, "completed", [])
         return ConversationResult(
             persona=persona_name,
             outcome="completed",
@@ -221,6 +235,9 @@ async def run_persona_conversation(
         conversation.outcome = "loss"
 
     await db.commit()
+    
+    # Emit persona complete event
+    await emit_persona_complete(session_id, persona_name, conversation.outcome, extraction["leaked_keys"])
 
     return ConversationResult(
         persona=persona_name,

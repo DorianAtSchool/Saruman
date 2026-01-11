@@ -1,4 +1,7 @@
+import asyncio
+import json
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -14,6 +17,7 @@ from app.schemas import (
     SecretResultResponse,
 )
 from app.services.simulation import run_simulation
+from app.services.events import subscribe, unsubscribe
 
 router = APIRouter()
 
@@ -45,14 +49,13 @@ async def start_simulation(
         raise HTTPException(status_code=400, detail="No secrets to protect")
 
     # If session was already run, reset it first
-    if session.status in ("completed", "failed", "running"):
-        # Delete old conversations and messages
+    if session.status in ("completed", "failed"):
+        # Delete old conversations and messages (messages cascade delete with conversation)
         result = await db.execute(
             select(Conversation).where(Conversation.session_id == session_id)
         )
         old_conversations = result.scalars().all()
         for conv in old_conversations:
-            # Messages cascade delete with conversation
             await db.delete(conv)
         
         # Reset secret leak status
@@ -62,6 +65,12 @@ async def start_simulation(
         # Reset session scores
         session.security_score = None
         session.usability_score = None
+        
+        # Commit deletions immediately to ensure clean state
+        await db.commit()
+    elif session.status == "running":
+        # Already running - don't start another simulation
+        return {"message": "Simulation already running", "session_id": session_id}
 
     # Mark session as running
     session.status = "running"
@@ -137,4 +146,40 @@ async def get_results(
         session=SessionResponse.model_validate(session),
         secrets=[SecretResultResponse.model_validate(s) for s in secrets],
         conversations=[ConversationResponse.model_validate(c) for c in conversations],
+    )
+
+
+@router.get("/sessions/{session_id}/stream")
+async def stream_simulation(session_id: str):
+    """Stream simulation events via Server-Sent Events."""
+    
+    async def event_generator():
+        queue = await subscribe(session_id)
+        try:
+            # Send initial connection event
+            yield f"data: {json.dumps({'type': 'connected', 'data': {'session_id': session_id}})}\n\n"
+            
+            while True:
+                try:
+                    # Wait for events with timeout
+                    message = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    yield f"data: {json.dumps(message)}\n\n"
+                    
+                    # If simulation complete or error, end the stream
+                    if message.get("type") in ("simulation_complete", "error"):
+                        break
+                except asyncio.TimeoutError:
+                    # Send keepalive
+                    yield f": keepalive\n\n"
+        finally:
+            await unsubscribe(session_id, queue)
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )

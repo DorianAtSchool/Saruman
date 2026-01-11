@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Card, Badge, Select } from '../components';
-import { getSession, getDefenseConfig, updateDefenseConfig, runSimulation } from '../api/client';
+import { getSession, getDefenseConfig, updateDefenseConfig } from '../api/client';
 import type { DefenseConfig } from '../types';
 import { PERSONAS } from '../types';
 import { MODELS } from './SetupPage';
@@ -78,7 +78,12 @@ export function AttackConfigPage() {
     if (!sessionId || !defenseConfig) return;
     setStarting(true);
     try {
-      // Save attacker model before running (merge with existing config)
+      // Save attacker model and attack config to localStorage for RunningPage
+      localStorage.setItem(`simulation-personas-${sessionId}`, JSON.stringify(selectedPersonas));
+      localStorage.setItem(`simulation-maxTurns-${sessionId}`, String(maxTurns));
+      localStorage.setItem(`simulation-attackerModel-${sessionId}`, attackerModel);
+      
+      // Save attacker model to defense config
       await updateDefenseConfig(sessionId, {
         system_prompt: defenseConfig.system_prompt,
         model_name: defenseConfig.model_name,
@@ -88,16 +93,13 @@ export function AttackConfigPage() {
         judge_enabled: defenseConfig.judge_enabled,
         judge_prompt: defenseConfig.judge_prompt,
       });
-      await runSimulation(sessionId, {
-        personas: selectedPersonas,
-        max_turns: maxTurns,
-      });
-      // Navigate to running page
+      
+      // Navigate to running page - it will start the simulation after connecting to SSE
       navigate(`/session/${sessionId}/running`);
     } catch (error: any) {
       const detail = error?.response?.data?.detail || error?.message || 'Unknown error';
-      console.error('Failed to start simulation:', detail, error);
-      alert(`Failed to start simulation: ${detail}`);
+      console.error('Failed to save config:', detail, error);
+      alert(`Failed to save config: ${detail}`);
       setStarting(false);
     }
   }

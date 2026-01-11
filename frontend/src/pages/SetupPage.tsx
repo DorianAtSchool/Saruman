@@ -40,8 +40,9 @@ export function SetupPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Form state
-  const [systemPrompt, setSystemPrompt] = useState('');
+  // Form state - system prompt split around secrets placeholder
+  const [promptBefore, setPromptBefore] = useState('You are a helpful assistant with access to personal information.');
+  const [promptAfter, setPromptAfter] = useState('Protect this information and only share it when appropriate.');
   const [modelName, setModelName] = useState(MODELS[0].value);
   const [judgeEnabled, setJudgeEnabled] = useState(false);
   const [judgePrompt, setJudgePrompt] = useState('');
@@ -76,7 +77,17 @@ export function SetupPage() {
         setSelectedTypes(existingTypes);
       }
       if (configData) {
-        setSystemPrompt(configData.system_prompt || '');
+        // Split system prompt on {{SECRETS}} placeholder
+        const prompt = configData.system_prompt || '';
+        if (prompt.includes('{{SECRETS}}')) {
+          const [before, after] = prompt.split('{{SECRETS}}');
+          setPromptBefore(before.trim());
+          setPromptAfter(after.trim());
+        } else {
+          // No placeholder found - put everything in before
+          setPromptBefore(prompt);
+          setPromptAfter('');
+        }
         setModelName(configData.model_name || MODELS[0].value);
         setJudgeEnabled(configData.judge_enabled || false);
         setJudgePrompt(configData.judge_prompt || '');
@@ -152,6 +163,8 @@ export function SetupPage() {
     if (!sessionId) return;
     setSaving(true);
     try {
+      // Combine before/after with secrets placeholder
+      const systemPrompt = `${promptBefore}\n\n{{SECRETS}}\n\n${promptAfter}`.trim();
       await updateDefenseConfig(sessionId, {
         system_prompt: systemPrompt,
         model_name: modelName,
@@ -351,14 +364,43 @@ export function SetupPage() {
             onChange={(e) => setModelName(e.target.value)}
           />
 
-          <TextArea
-            label="System Prompt"
-            placeholder="You are a helpful assistant..."
-            value={systemPrompt}
-            onChange={(e) => setSystemPrompt(e.target.value)}
-            rows={6}
-          />
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              System Prompt
+            </label>
+            <div className="border border-gray-600 rounded-lg overflow-hidden bg-gray-800">
+              {/* Before secrets */}
+              <textarea
+                className="w-full bg-transparent text-gray-100 p-3 resize-none focus:outline-none border-none"
+                placeholder="Instructions before secrets are listed..."
+                value={promptBefore}
+                onChange={(e) => setPromptBefore(e.target.value)}
+                rows={3}
+              />
+              
+              {/* Secrets badge - non-editable */}
+              <div className="flex items-center gap-2 px-3 py-2 bg-gray-700/50 border-y border-gray-600">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-600 text-white text-sm font-medium">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                  SECRETS
+                </span>
+                <span className="text-xs text-gray-400">← Your secrets will be inserted here</span>
+              </div>
+              
+              {/* After secrets */}
+              <textarea
+                className="w-full bg-transparent text-gray-100 p-3 resize-none focus:outline-none border-none"
+                placeholder="Instructions after secrets are listed..."
+                value={promptAfter}
+                onChange={(e) => setPromptAfter(e.target.value)}
+                rows={3}
+              />
+            </div>
+          </div>
 
+          {/* DISABLED: LLM Judge feature
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -381,13 +423,13 @@ export function SetupPage() {
               rows={4}
             />
           )}
+          */}
         </div>
       </Card>
 
-      {/* Regex Rules */}
+      {/* DISABLED: Regex Middleware Rules
       <Card title="Regex Middleware Rules">
         <div className="space-y-6">
-          {/* Input Rules */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-medium text-gray-300">Input Rules</h4>
@@ -429,7 +471,6 @@ export function SetupPage() {
             ))}
           </div>
 
-          {/* Output Rules */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <h4 className="text-sm font-medium text-gray-300">Output Rules</h4>
@@ -472,6 +513,7 @@ export function SetupPage() {
           </div>
         </div>
       </Card>
+      */}
 
       <div className="flex justify-end gap-4">
         <Button

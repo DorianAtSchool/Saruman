@@ -101,3 +101,10 @@ export async function getResults(sessionId: string): Promise<SimulationResults> 
   );
   return response.data;
 }
+
+export async function getConversations(sessionId: string): Promise<SimulationResults['conversations']> {
+  const response = await api.get<SimulationResults>(
+    `/sessions/${sessionId}/results`
+  );
+  return response.data.conversations;
+}
