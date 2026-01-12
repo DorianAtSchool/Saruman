@@ -6,8 +6,6 @@ Saruman is a research and simulation platform for evaluating the security and us
 
 - **backend/**: FastAPI backend for experiment orchestration, persona logic, and data storage.
 - **frontend/**: React + TypeScript frontend for experiment setup, monitoring, and results visualization.
-- **data/**: (Optional) Data storage or exports.
-- **CLAUDE.md, PLAN.md, EXPERIMENT_ROADMAP.md**: Project planning and documentation.
 
 ## Features
 
@@ -21,9 +19,8 @@ Saruman is a research and simulation platform for evaluating the security and us
 
 ### Prerequisites
 
-- Python 3.10+
-- Node.js 18+
-- (Optional) Docker
+- Python 3.11+
+- Node.js 22+
 
 ### Backend Setup
 
@@ -32,7 +29,6 @@ cd backend
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env  # Edit as needed
 uvicorn app.main:app --reload
 ```
 
@@ -58,7 +54,7 @@ The frontend will be available at [http://localhost:5173](http://localhost:5173)
 
 - **Backend**: FastAPI, SQLAlchemy, asyncio
 - **Frontend**: React, TypeScript, Vite
-- **Testing**: Pytest (backend), Vitest/Jest (frontend)
+- **Testing**: Pytest (backend)
 
 ### Running Backend Tests
 
@@ -74,14 +70,11 @@ cd frontend
 npm test
 ```
 
-## Contributing
+## Credits
 
-Pull requests and issues are welcome! See the roadmap and planning docs for ideas.
+Dorian Benhamou Goldfajn (Doriangol1@gmail.com)
 
-## License
-
-MIT License
+Oren Schmerling (Orenschmerling@gmail.com)
 
 ---
-
 For more details, see the [backend/README.md](backend/README.md) and [frontend/README.md](frontend/README.md).
