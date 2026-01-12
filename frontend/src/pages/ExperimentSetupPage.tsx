@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, Card, Input } from '../components';
+import { Button, Card, Input, Select } from '../components';
 import {
   createExperiment,
   startExperiment,
@@ -8,7 +8,8 @@ import {
   getBluePersonaOptions,
 } from '../api/client';
 import type { PersonaOption, ExperimentConfig } from '../types';
-import { SECRET_TYPES, AVAILABLE_MODELS } from '../types';
+import { SECRET_TYPES } from '../types';
+import { MODELS } from '../models';
 
 const DEFAULT_CONFIG: ExperimentConfig = {
   trials_per_combination: 3,
@@ -16,7 +17,7 @@ const DEFAULT_CONFIG: ExperimentConfig = {
   defender_model: 'groq/llama-3.1-8b-instant',
   attacker_model: 'groq/llama-3.1-8b-instant',
   secret_types: ['ssn', 'phone', 'email'],
-  custom_secrets: [],
+  custom_secrets: {},
   delay_between_trials: 2.0,
 };
 
@@ -30,6 +31,10 @@ export function ExperimentSetupPage() {
   const [selectedBlue, setSelectedBlue] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+
+  // Custom secrets state
+  const [newSecretKey, setNewSecretKey] = useState('');
+  const [newSecretValue, setNewSecretValue] = useState('');
 
   useEffect(() => {
     loadOptions();
@@ -75,29 +80,6 @@ export function ExperimentSetupPage() {
     }));
   }
 
-  function addCustomSecret() {
-    setConfig((prev) => ({
-      ...prev,
-      custom_secrets: [...prev.custom_secrets, { key: '', value: '' }],
-    }));
-  }
-
-  function updateCustomSecret(index: number, field: 'key' | 'value', value: string) {
-    setConfig((prev) => ({
-      ...prev,
-      custom_secrets: prev.custom_secrets.map((secret, i) =>
-        i === index ? { ...secret, [field]: value } : secret
-      ),
-    }));
-  }
-
-  function removeCustomSecret(index: number) {
-    setConfig((prev) => ({
-      ...prev,
-      custom_secrets: prev.custom_secrets.filter((_, i) => i !== index),
-    }));
-  }
-
   const totalTrials =
     selectedRed.length * selectedBlue.length * config.trials_per_combination;
 
@@ -111,25 +93,11 @@ export function ExperimentSetupPage() {
       return;
     }
 
-    // Validate custom secrets - must have both key and value
-    const validSecrets = config.custom_secrets.filter(s => s.key.trim() && s.value.trim());
-
-    // Convert custom_secrets array to dict for API
-    const customSecretsDict: Record<string, string> = {};
-    for (const secret of validSecrets) {
-      customSecretsDict[secret.key.trim()] = secret.value.trim();
-    }
-
     setCreating(true);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const apiConfig: any = {
-        ...config,
-        custom_secrets: customSecretsDict,
-      };
       const experiment = await createExperiment({
         name: name.trim(),
-        config: apiConfig,
+        config,
         red_personas: selectedRed,
         blue_personas: selectedBlue,
       });
@@ -304,37 +272,25 @@ export function ExperimentSetupPage() {
             <label className="block text-sm font-medium text-gray-300 mb-1">
               Defender Model
             </label>
-            <select
+            <Select
+              options={MODELS}
               value={config.defender_model}
               onChange={(e) =>
                 setConfig((c) => ({ ...c, defender_model: e.target.value }))
               }
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {AVAILABLE_MODELS.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.name}
-                </option>
-              ))}
-            </select>
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">
               Attacker Model
             </label>
-            <select
+            <Select
+              options={MODELS}
               value={config.attacker_model}
               onChange={(e) =>
                 setConfig((c) => ({ ...c, attacker_model: e.target.value }))
               }
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 focus:outline-none focus:ring-2 focus:ring-red-500"
-            >
-              {AVAILABLE_MODELS.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.name}
-                </option>
-              ))}
-            </select>
+            />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">
@@ -359,7 +315,7 @@ export function ExperimentSetupPage() {
 
         <div className="mt-6">
           <label className="block text-sm font-medium text-gray-300 mb-2">
-            Secret Types (auto-generated)
+            Secret Types
           </label>
           <div className="flex flex-wrap gap-2">
             {SECRET_TYPES.map((type) => (
@@ -383,47 +339,71 @@ export function ExperimentSetupPage() {
           </div>
         </div>
 
+        {/* Custom Secrets */}
         <div className="mt-6">
           <label className="block text-sm font-medium text-gray-300 mb-2">
             Custom Secrets
           </label>
           <p className="text-xs text-gray-500 mb-3">
-            Add your own key-value pairs to test against
+            Add custom key-value pairs that will be included in every trial
           </p>
-          <div className="space-y-2">
-            {config.custom_secrets.map((secret, index) => (
-              <div key={index} className="flex gap-2 items-center">
-                <Input
-                  placeholder="Key (e.g., api_key)"
-                  value={secret.key}
-                  onChange={(e) => updateCustomSecret(index, 'key', e.target.value)}
-                  className="flex-1"
-                />
-                <Input
-                  placeholder="Value (e.g., sk-abc123)"
-                  value={secret.value}
-                  onChange={(e) => updateCustomSecret(index, 'value', e.target.value)}
-                  className="flex-1"
-                />
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => removeCustomSecret(index)}
-                  className="text-red-400 hover:text-red-300"
-                >
-                  Remove
-                </Button>
-              </div>
-            ))}
+          
+          {/* Existing custom secrets */}
+          {Object.keys(config.custom_secrets).length > 0 && (
+            <div className="space-y-2 mb-3">
+              {Object.entries(config.custom_secrets).map(([key, value]) => (
+                <div key={key} className="flex items-center gap-2 bg-gray-700/50 rounded-lg px-3 py-2">
+                  <span className="text-gray-300 font-medium">{key}:</span>
+                  <span className="text-gray-400 font-mono text-sm flex-1">{value}</span>
+                  <button
+                    onClick={() => {
+                      const newSecrets = { ...config.custom_secrets };
+                      delete newSecrets[key];
+                      setConfig((c) => ({ ...c, custom_secrets: newSecrets }));
+                    }}
+                    className="text-red-400 hover:text-red-300 text-sm"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Add new secret */}
+          <div className="flex gap-2">
+            <Input
+              placeholder="Key (e.g., api_key)"
+              value={newSecretKey}
+              onChange={(e) => setNewSecretKey(e.target.value)}
+              className="flex-1"
+            />
+            <Input
+              placeholder="Value"
+              value={newSecretValue}
+              onChange={(e) => setNewSecretValue(e.target.value)}
+              className="flex-1"
+            />
+            <Button
+              variant="secondary"
+              onClick={() => {
+                if (newSecretKey.trim() && newSecretValue.trim()) {
+                  setConfig((c) => ({
+                    ...c,
+                    custom_secrets: {
+                      ...c.custom_secrets,
+                      [newSecretKey.trim()]: newSecretValue.trim(),
+                    },
+                  }));
+                  setNewSecretKey('');
+                  setNewSecretValue('');
+                }
+              }}
+              disabled={!newSecretKey.trim() || !newSecretValue.trim()}
+            >
+              Add
+            </Button>
           </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={addCustomSecret}
-            className="mt-3"
-          >
-            + Add Custom Secret
-          </Button>
         </div>
       </Card>
 

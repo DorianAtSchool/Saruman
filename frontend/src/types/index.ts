@@ -117,38 +117,21 @@ export const SECRET_TYPES = [
   'medical',
 ] as const;
 
-export const AVAILABLE_MODELS = [
-  { id: 'groq/llama-3.1-8b-instant', name: 'Llama 3.1 8B (Groq)', provider: 'Groq' },
-  { id: 'groq/llama-3.3-70b-versatile', name: 'Llama 3.3 70B (Groq)', provider: 'Groq' },
-  { id: 'gemini/gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite', provider: 'Google' },
-  { id: 'gemini/gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'Google' },
-  { id: 'gemini/gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'Google' },
-  { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'OpenAI' },
-  { id: 'gpt-4o', name: 'GPT-4o', provider: 'OpenAI' },
-  { id: 'claude-3-5-haiku-latest', name: 'Claude 3.5 Haiku', provider: 'Anthropic' },
-  { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet', provider: 'Anthropic' },
-] as const;
-
 // Experiment types
-export interface CustomSecret {
-  key: string;
-  value: string;
-}
-
 export interface ExperimentConfig {
   trials_per_combination: number;
   turns_per_trial: number;
   defender_model: string;
   attacker_model: string;
   secret_types: string[];
-  custom_secrets: CustomSecret[];
+  custom_secrets: Record<string, string>;
   delay_between_trials: number;
 }
 
 export interface Experiment {
   id: string;
   name: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   created_at: string;
   config: ExperimentConfig & {
     red_personas?: string[];

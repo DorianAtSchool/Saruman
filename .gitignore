@@ -13,3 +13,5 @@ backend/app/__pycache__/
 backend/app/*.pyc
 frontend/src/__pycache__/
 backend/data
+**/__pycache__/
+**/*.pyc
