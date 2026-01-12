@@ -14,6 +14,8 @@ class SessionResponse(BaseModel):
     created_at: datetime
     security_score: float | None
     usability_score: float | None
+    selected_personas: list[str] = []
+    max_turns: int | None = None
 
     class Config:
         from_attributes = True
@@ -172,3 +174,127 @@ class PromptTemplate(BaseModel):
 
 class TemplateListResponse(BaseModel):
     templates: list[PromptTemplate]
+
+
+# Attacker persona schemas
+class PersonaInfo(BaseModel):
+    id: str
+    name: str
+    description: str
+    default_prompt: str
+
+
+class CustomAttackerPromptCreate(BaseModel):
+    persona: str
+    system_prompt: str
+
+
+class CustomAttackerPromptResponse(BaseModel):
+    id: str
+    session_id: str
+    persona: str
+    system_prompt: str
+
+    class Config:
+        from_attributes = True
+
+
+class PersonaPromptsResponse(BaseModel):
+    personas: list[PersonaInfo]
+    custom_prompts: dict[str, str]  # persona -> custom_prompt
+
+
+# ============ Experiment Schemas ============
+
+class ExperimentConfig(BaseModel):
+    """Configuration for an experiment run."""
+    trials_per_combination: int = 3
+    turns_per_trial: int = 5
+    defender_model: str = "groq/llama-3.1-8b-instant"
+    attacker_model: str = "groq/llama-3.1-8b-instant"
+    secret_types: list[str] = ["ssn", "phone", "email"]
+    custom_secrets: dict[str, str] = {}
+    delay_between_trials: float = 2.0
+
+
+class ExperimentCreate(BaseModel):
+    """Request to create a new experiment."""
+    name: str
+    config: ExperimentConfig = ExperimentConfig()
+    red_personas: list[str] | None = None  # None = all
+    blue_personas: list[str] | None = None  # None = all templates
+
+
+class ExperimentResponse(BaseModel):
+    """Basic experiment info."""
+    id: str
+    name: str
+    status: str
+    created_at: datetime
+    config: dict
+    total_trials: int
+    completed_trials: int
+    current_red_persona: str | None
+    current_blue_persona: str | None
+
+    class Config:
+        from_attributes = True
+
+
+class TrialMetricsResponse(BaseModel):
+    """Metrics from a single trial."""
+    secrets_leaked_count: int
+    secrets_total_count: int
+    leak_rate: float
+    turns_to_first_leak: int | None
+    total_turns: int
+    attack_success: bool
+    full_breach: bool
+
+    class Config:
+        from_attributes = True
+
+
+class ExperimentTrialResponse(BaseModel):
+    """A single trial in an experiment."""
+    id: str
+    red_persona: str
+    blue_persona: str
+    trial_number: int
+    created_at: datetime
+    metrics: TrialMetricsResponse | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class MatchupStats(BaseModel):
+    """Statistics for a specific red vs blue matchup."""
+    avg_leak_rate: float
+    attack_success_rate: float
+    full_breach_rate: float
+    avg_turns_to_first_leak: float | None
+    trial_count: int
+
+
+class PersonaOverallStats(BaseModel):
+    """Overall stats for a persona across all matchups."""
+    overall_success_rate: float
+    avg_leak_rate: float
+
+
+class ExperimentResultsResponse(BaseModel):
+    """Full experiment results for visualization."""
+    red_team_performance: dict[str, dict[str, MatchupStats]]  # red -> blue -> stats
+    blue_team_performance: dict[str, dict[str, MatchupStats]]  # blue -> red -> stats
+    aggregated: dict[str, dict[str, PersonaOverallStats]]  # "red_overall"/"blue_overall" -> persona -> stats
+
+
+class ExperimentStatusResponse(BaseModel):
+    """Current experiment status with progress."""
+    status: str
+    total_trials: int
+    completed_trials: int
+    current_red_persona: str | None
+    current_blue_persona: str | None
+    progress_percent: float

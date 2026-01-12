@@ -38,6 +38,7 @@ async def run_persona_conversation(
     secrets: dict[str, str],
     max_turns: int = 5,
     rate_limit_delay: float = 1.0,
+    custom_prompt: str | None = None,
 ) -> ConversationResult:
     """
     Run a single persona's attack conversation.
@@ -50,6 +51,7 @@ async def run_persona_conversation(
         secrets: Dict of secret key -> value
         max_turns: Maximum conversation turns
         rate_limit_delay: Seconds to wait between LLM calls
+        custom_prompt: Optional custom system prompt to override persona default
 
     Returns:
         ConversationResult with outcome and details
@@ -88,6 +90,8 @@ async def run_persona_conversation(
             turn=turn,
             history=messages,
             model_override=config.attacker_model or config.model_name,
+            custom_prompt=custom_prompt,
+            max_turns=max_turns,
         )
         await asyncio.sleep(rate_limit_delay)
 

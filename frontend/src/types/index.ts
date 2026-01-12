@@ -5,6 +5,8 @@ export interface Session {
   security_score: number | null;
   usability_score: number | null;
   created_at: string;
+  selected_personas: string[];
+  max_turns: number | null;
 }
 
 export interface Secret {
@@ -114,3 +116,128 @@ export const SECRET_TYPES = [
   'salary',
   'medical',
 ] as const;
+
+export const AVAILABLE_MODELS = [
+  { id: 'groq/llama-3.1-8b-instant', name: 'Llama 3.1 8B (Groq)', provider: 'Groq' },
+  { id: 'groq/llama-3.3-70b-versatile', name: 'Llama 3.3 70B (Groq)', provider: 'Groq' },
+  { id: 'gemini/gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite', provider: 'Google' },
+  { id: 'gemini/gemini-2.0-flash', name: 'Gemini 2.0 Flash', provider: 'Google' },
+  { id: 'gemini/gemini-1.5-pro', name: 'Gemini 1.5 Pro', provider: 'Google' },
+  { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'OpenAI' },
+  { id: 'gpt-4o', name: 'GPT-4o', provider: 'OpenAI' },
+  { id: 'claude-3-5-haiku-latest', name: 'Claude 3.5 Haiku', provider: 'Anthropic' },
+  { id: 'claude-3-5-sonnet-latest', name: 'Claude 3.5 Sonnet', provider: 'Anthropic' },
+] as const;
+
+// Experiment types
+export interface CustomSecret {
+  key: string;
+  value: string;
+}
+
+export interface ExperimentConfig {
+  trials_per_combination: number;
+  turns_per_trial: number;
+  defender_model: string;
+  attacker_model: string;
+  secret_types: string[];
+  custom_secrets: CustomSecret[];
+  delay_between_trials: number;
+}
+
+export interface Experiment {
+  id: string;
+  name: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  created_at: string;
+  config: ExperimentConfig & {
+    red_personas?: string[];
+    blue_personas?: string[];
+  };
+  total_trials: number;
+  completed_trials: number;
+  current_red_persona: string | null;
+  current_blue_persona: string | null;
+}
+
+export interface ExperimentCreate {
+  name: string;
+  config?: Partial<ExperimentConfig>;
+  red_personas?: string[];
+  blue_personas?: string[];
+}
+
+export interface ExperimentStatus {
+  status: string;
+  total_trials: number;
+  completed_trials: number;
+  current_red_persona: string | null;
+  current_blue_persona: string | null;
+  progress_percent: number;
+}
+
+export interface TrialMetrics {
+  secrets_leaked_count: number;
+  secrets_total_count: number;
+  leak_rate: number;
+  turns_to_first_leak: number | null;
+  total_turns: number;
+  attack_success: boolean;
+  full_breach: boolean;
+}
+
+export interface ExperimentTrial {
+  id: string;
+  red_persona: string;
+  blue_persona: string;
+  trial_number: number;
+  created_at: string;
+  metrics: TrialMetrics | null;
+}
+
+export interface MatchupStats {
+  avg_leak_rate: number;
+  attack_success_rate: number;
+  full_breach_rate: number;
+  avg_turns_to_first_leak: number | null;
+  trial_count: number;
+}
+
+export interface PersonaOverallStats {
+  overall_success_rate?: number;
+  avg_leak_rate?: number;
+  overall_defense_rate?: number;
+  avg_secrets_protected?: number;
+}
+
+export interface ExperimentResults {
+  red_team_performance: Record<string, Record<string, MatchupStats>>;
+  blue_team_performance: Record<string, Record<string, MatchupStats>>;
+  aggregated: {
+    red_overall: Record<string, PersonaOverallStats>;
+    blue_overall: Record<string, PersonaOverallStats>;
+  };
+}
+
+export interface PersonaOption {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+export const RED_PERSONA_COLORS: Record<string, string> = {
+  direct: '#FF6B6B',
+  admin: '#FF8E53',
+  aggressor: '#FF5252',
+  close_friend: '#FFA07A',
+  context_poisoner: '#FF7043',
+  gaslighter: '#FF4444',
+  utilitarian: '#E57373',
+};
+
+export const BLUE_PERSONA_COLORS: Record<string, string> = {
+  strict_bureaucrat: '#4FC3F7',
+  helpful_assistant: '#64B5F6',
+  paranoid_guardian: '#42A5F5',
+  confused_intern: '#29B6F6',
+};

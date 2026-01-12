@@ -3,3 +3,7 @@ export { SetupPage } from './SetupPage';
 export { AttackConfigPage } from './SimulationPage';
 export { RunningPage } from './RunningPage';
 export { ResultsPage } from './ResultsPage';
+export { ExperimentsListPage } from './ExperimentsListPage';
+export { ExperimentSetupPage } from './ExperimentSetupPage';
+export { ExperimentProgressPage } from './ExperimentProgressPage';
+export { ExperimentResultsPage } from './ExperimentResultsPage';

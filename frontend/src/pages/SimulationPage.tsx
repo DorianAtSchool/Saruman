@@ -1,15 +1,25 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Card, Badge, Select } from '../components';
-import { getSession, getDefenseConfig, updateDefenseConfig } from '../api/client';
+import {
+  getSession,
+  getDefenseConfig,
+  updateDefenseConfig,
+  getPersonaPrompts,
+  updatePersonaPrompt,
+  resetPersonaPrompt,
+  cancelSession,
+  type PersonaInfo,
+} from '../api/client';
 import type { DefenseConfig } from '../types';
 import { PERSONAS } from '../types';
-import { MODELS } from './SetupPage';
+import { MODELS } from '../models';
 
 export function AttackConfigPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
 
+  const [cancelling, setCancelling] = useState(false);
   const [defenseConfig, setDefenseConfig] = useState<DefenseConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
@@ -25,6 +35,13 @@ export function AttackConfigPage() {
     const saved = sessionId ? localStorage.getItem(`simulation-attackerModel-${sessionId}`) : null;
     return saved || MODELS[0].value;
   });
+
+  // Attacker prompt editing
+  const [personaInfos, setPersonaInfos] = useState<PersonaInfo[]>([]);
+  const [customPrompts, setCustomPrompts] = useState<Record<string, string>>({});
+  const [editingPersona, setEditingPersona] = useState<string | null>(null);
+  const [editPromptValue, setEditPromptValue] = useState('');
+  const [savingPrompt, setSavingPrompt] = useState(false);
 
   // Save selections to localStorage when they change
   useEffect(() => {
@@ -55,11 +72,14 @@ export function AttackConfigPage() {
     if (!sessionId) return;
     setLoading(true);
     try {
-      const [sessionData, configData] = await Promise.all([
+      const [sessionData, configData, promptsData] = await Promise.all([
         getSession(sessionId),
         getDefenseConfig(sessionId),
+        getPersonaPrompts(sessionId),
       ]);
       setDefenseConfig(configData);
+      setPersonaInfos(promptsData.personas);
+      setCustomPrompts(promptsData.custom_prompts);
       if (configData?.attacker_model) {
         setAttackerModel(configData.attacker_model);
       }
@@ -71,6 +91,56 @@ export function AttackConfigPage() {
       console.error('Failed to load session:', error);
     } finally {
       setLoading(false);
+    }
+  }
+
+  function getPromptForPersona(personaId: string): string {
+    if (customPrompts[personaId]) {
+      return customPrompts[personaId];
+    }
+    const info = personaInfos.find(p => p.id === personaId);
+    return info?.default_prompt || '';
+  }
+
+  function hasCustomPrompt(personaId: string): boolean {
+    if (!customPrompts[personaId]) return false;
+    const info = personaInfos.find(p => p.id === personaId);
+    // Only show as custom if it differs from default
+    return customPrompts[personaId].trim() !== (info?.default_prompt || '').trim();
+  }
+
+  function startEditing(personaId: string) {
+    setEditingPersona(personaId);
+    setEditPromptValue(getPromptForPersona(personaId));
+  }
+
+  async function savePrompt() {
+    if (!sessionId || !editingPersona) return;
+    setSavingPrompt(true);
+    try {
+      await updatePersonaPrompt(sessionId, editingPersona, editPromptValue);
+      setCustomPrompts({ ...customPrompts, [editingPersona]: editPromptValue });
+      setEditingPersona(null);
+    } catch (error) {
+      console.error('Failed to save prompt:', error);
+    } finally {
+      setSavingPrompt(false);
+    }
+  }
+
+  async function resetPrompt() {
+    if (!sessionId || !editingPersona) return;
+    setSavingPrompt(true);
+    try {
+      await resetPersonaPrompt(sessionId, editingPersona);
+      const newCustomPrompts = { ...customPrompts };
+      delete newCustomPrompts[editingPersona];
+      setCustomPrompts(newCustomPrompts);
+      setEditingPersona(null);
+    } catch (error) {
+      console.error('Failed to reset prompt:', error);
+    } finally {
+      setSavingPrompt(false);
     }
   }
 
@@ -112,6 +182,20 @@ export function AttackConfigPage() {
     }
   }
 
+  async function handleCancelSession() {
+    if (!sessionId) return;
+    if (!window.confirm('Cancel this session? This cannot be undone.')) return;
+    setCancelling(true);
+    try {
+      await cancelSession(sessionId);
+      navigate('/');
+    } catch (error) {
+      alert('Failed to cancel session');
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -132,34 +216,100 @@ export function AttackConfigPage() {
       <Card title="Select Attackers">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {PERSONAS.map((persona) => (
-            <label
+            <div
               key={persona.id}
-              className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors ${
+              className={`p-4 rounded-lg border transition-colors ${
                 selectedPersonas.includes(persona.id)
                   ? 'bg-blue-900/30 border-blue-700'
-                  : 'bg-gray-800 border-gray-700 hover:border-gray-600'
-              } ${starting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  : 'bg-gray-800 border-gray-700'
+              } ${starting ? 'opacity-50' : ''}`}
             >
-              <input
-                type="checkbox"
-                checked={selectedPersonas.includes(persona.id)}
-                onChange={() => togglePersona(persona.id)}
-                disabled={starting}
-                className="mt-1 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500"
-              />
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-gray-100">{persona.name}</span>
-                  {persona.id === 'benign_user' && (
-                    <Badge variant="info">Usability Test</Badge>
-                  )}
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedPersonas.includes(persona.id)}
+                  onChange={() => togglePersona(persona.id)}
+                  disabled={starting}
+                  className="mt-1 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-blue-500"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-gray-100">{persona.name}</span>
+                    {persona.id === 'benign_user' && (
+                      <Badge variant="info">Usability Test</Badge>
+                    )}
+                    {hasCustomPrompt(persona.id) && (
+                      <Badge variant="warning">Custom</Badge>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-400 mt-1">{persona.description}</p>
                 </div>
-                <p className="text-sm text-gray-400 mt-1">{persona.description}</p>
-              </div>
-            </label>
+              </label>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  startEditing(persona.id);
+                }}
+                disabled={starting}
+                className="mt-2 text-xs text-blue-400 hover:text-blue-300"
+              >
+                View/Edit Prompt
+              </button>
+            </div>
           ))}
         </div>
       </Card>
+
+      {/* Prompt Edit Modal */}
+      {editingPersona && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-lg max-w-3xl w-full max-h-[80vh] flex flex-col">
+            <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+              <h3 className="text-lg font-medium text-gray-100">
+                Edit {PERSONAS.find(p => p.id === editingPersona)?.name} Prompt
+              </h3>
+              <button
+                onClick={() => setEditingPersona(null)}
+                className="text-gray-400 hover:text-gray-200"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-4 flex-1 overflow-hidden">
+              <textarea
+                value={editPromptValue}
+                onChange={(e) => setEditPromptValue(e.target.value)}
+                className="w-full h-full min-h-[300px] bg-gray-700 border border-gray-600 rounded-lg p-3 text-gray-100 font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter custom system prompt for this attacker..."
+              />
+            </div>
+            <div className="p-4 border-t border-gray-700 flex items-center justify-between">
+              <button
+                onClick={resetPrompt}
+                disabled={savingPrompt || !hasCustomPrompt(editingPersona)}
+                className="text-sm text-gray-400 hover:text-gray-200 disabled:opacity-50"
+              >
+                Reset to Default
+              </button>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => setEditingPersona(null)}
+                  disabled={savingPrompt}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={savePrompt}
+                  disabled={savingPrompt}
+                >
+                  {savingPrompt ? 'Saving...' : 'Save Prompt'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Card title="Simulation Settings">
         <div className="space-y-4">
@@ -192,13 +342,21 @@ export function AttackConfigPage() {
         </div>
       </Card>
 
-      <div className="flex justify-center">
+      <div className="flex justify-center gap-4">
         <Button
           size="lg"
           onClick={handleRunSimulation}
           disabled={starting || selectedPersonas.length === 0}
         >
           {starting ? 'Starting...' : 'Run Simulation →'}
+        </Button>
+        <Button
+          size="lg"
+          variant="danger"
+          onClick={handleCancelSession}
+          disabled={cancelling}
+        >
+          {cancelling ? 'Cancelling...' : 'Cancel Session'}
         </Button>
       </div>
     </div>

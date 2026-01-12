@@ -72,8 +72,10 @@ async def start_simulation(
         # Already running - don't start another simulation
         return {"message": "Simulation already running", "session_id": session_id}
 
-    # Mark session as running
+    # Mark session as running and save simulation config
     session.status = "running"
+    session.selected_personas = data.personas or []
+    session.max_turns = data.max_turns
     await db.commit()
 
     # Run simulation in background

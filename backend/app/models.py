@@ -4,6 +4,7 @@ from sqlalchemy import String, Text, Boolean, Float, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.prompts import DEFAULT_DEFENSE_PROMPT
 
 
 def generate_uuid() -> str:
@@ -19,6 +20,10 @@ class Session(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     security_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     usability_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Simulation configuration (stored when simulation is run)
+    selected_personas: Mapped[list] = mapped_column(JSON, default=list)
+    max_turns: Mapped[int | None] = mapped_column(nullable=True)
 
     secrets: Mapped[list["Secret"]] = relationship(back_populates="session", cascade="all, delete-orphan")
     defense_config: Mapped["DefenseConfig | None"] = relationship(back_populates="session", cascade="all, delete-orphan", uselist=False)
@@ -43,7 +48,7 @@ class DefenseConfig(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
     session_id: Mapped[str] = mapped_column(ForeignKey("sessions.id", ondelete="CASCADE"), unique=True)
-    system_prompt: Mapped[str] = mapped_column(Text, default="You are a helpful assistant.")
+    system_prompt: Mapped[str] = mapped_column(Text, default=DEFAULT_DEFENSE_PROMPT)
     model_name: Mapped[str] = mapped_column(String(100), default="gpt-4o-mini")
     attacker_model: Mapped[str | None] = mapped_column(String(100), nullable=True)  # If None, uses model_name
     regex_input_rules: Mapped[dict] = mapped_column(JSON, default=list)  # rules for input filtering
@@ -87,3 +92,69 @@ class Message(Base):
     turn_number: Mapped[int] = mapped_column(default=0)
 
     conversation: Mapped["Conversation"] = relationship(back_populates="messages")
+
+
+class CustomAttackerPrompt(Base):
+    """Custom attacker prompts per session, overriding default persona prompts."""
+    __tablename__ = "custom_attacker_prompts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    session_id: Mapped[str] = mapped_column(ForeignKey("sessions.id", ondelete="CASCADE"))
+    persona: Mapped[str] = mapped_column(String(50))  # attacker persona name
+    system_prompt: Mapped[str] = mapped_column(Text)  # custom prompt for this persona
+
+
+# ============ Experiment Models ============
+
+class ExperimentRun(Base):
+    """An experiment run that tests all red vs blue persona combinations."""
+    __tablename__ = "experiment_runs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    name: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, running, completed, failed, cancelled
+    config: Mapped[dict] = mapped_column(JSON, default=dict)  # model settings, turn counts, etc.
+
+    # Progress tracking
+    total_trials: Mapped[int] = mapped_column(default=0)
+    completed_trials: Mapped[int] = mapped_column(default=0)
+    current_red_persona: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    current_blue_persona: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    trials: Mapped[list["ExperimentTrial"]] = relationship(back_populates="experiment", cascade="all, delete-orphan")
+
+
+class ExperimentTrial(Base):
+    """A single trial within an experiment: one red persona vs one blue persona."""
+    __tablename__ = "experiment_trials"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    experiment_id: Mapped[str] = mapped_column(ForeignKey("experiment_runs.id", ondelete="CASCADE"))
+    red_persona: Mapped[str] = mapped_column(String(50))  # attacker personality name
+    blue_persona: Mapped[str] = mapped_column(String(50))  # defender template name
+    session_id: Mapped[str | None] = mapped_column(ForeignKey("sessions.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    trial_number: Mapped[int] = mapped_column(default=1)  # For multiple trials per combination
+
+    experiment: Mapped["ExperimentRun"] = relationship(back_populates="trials")
+    session: Mapped["Session | None"] = relationship()
+    metrics: Mapped["TrialMetrics | None"] = relationship(back_populates="trial", cascade="all, delete-orphan", uselist=False)
+
+
+class TrialMetrics(Base):
+    """Metrics collected from a single trial."""
+    __tablename__ = "trial_metrics"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    trial_id: Mapped[str] = mapped_column(ForeignKey("experiment_trials.id", ondelete="CASCADE"), unique=True)
+
+    secrets_leaked_count: Mapped[int] = mapped_column(default=0)
+    secrets_total_count: Mapped[int] = mapped_column(default=0)
+    leak_rate: Mapped[float] = mapped_column(Float, default=0.0)  # 0.0 - 1.0
+    turns_to_first_leak: Mapped[int | None] = mapped_column(nullable=True)  # null if no leak
+    total_turns: Mapped[int] = mapped_column(default=0)
+    attack_success: Mapped[bool] = mapped_column(Boolean, default=False)  # any secret leaked
+    full_breach: Mapped[bool] = mapped_column(Boolean, default=False)  # all secrets leaked
+
+    trial: Mapped["ExperimentTrial"] = relationship(back_populates="metrics")

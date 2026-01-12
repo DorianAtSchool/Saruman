@@ -6,3 +6,5 @@ export { Select } from './Select';
 export { Badge } from './Badge';
 export { ScoreGauge } from './ScoreGauge';
 export { ChatLog } from './ChatLog';
+export { SpiderChart } from './SpiderChart';
+export type { SpiderDataPoint, PersonaRadar } from './SpiderChart';

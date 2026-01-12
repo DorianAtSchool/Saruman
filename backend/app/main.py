@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 load_dotenv()
 
 from app.database import init_db
-from app.routes import sessions, simulation
+from app.routes import sessions, simulation, experiments
 
 
 @asynccontextmanager
@@ -33,6 +33,7 @@ app.add_middleware(
 
 app.include_router(sessions.router, prefix="/api", tags=["sessions"])
 app.include_router(simulation.router, prefix="/api", tags=["simulation"])
+app.include_router(experiments.router, prefix="/api", tags=["experiments"])
 
 
 @app.get("/")

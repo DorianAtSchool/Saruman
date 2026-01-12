@@ -4,7 +4,9 @@
       "Bash(pip3:*)",
       "WebSearch",
       "Bash(source ../venv/bin/activate)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run build:*)"
     ]
   }
 }

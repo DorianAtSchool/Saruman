@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Card, Badge, ScoreGauge, ChatLog } from '../components';
-import { getResults } from '../api/client';
-import type { SimulationResults, Conversation } from '../types';
+import { getResults, getDefenseConfig, getPersonaPrompts, cancelSession, type PersonaPromptsResponse } from '../api/client';
+import type { SimulationResults, Conversation, DefenseConfig } from '../types';
 
 export function ResultsPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -11,6 +11,11 @@ export function ResultsPage() {
   const [results, setResults] = useState<SimulationResults | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [defenseConfig, setDefenseConfig] = useState<DefenseConfig | null>(null);
+  const [personaPrompts, setPersonaPrompts] = useState<PersonaPromptsResponse | null>(null);
+  const [showDefenderPrompt, setShowDefenderPrompt] = useState(false);
+  const [showAttackerPrompt, setShowAttackerPrompt] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     if (sessionId) {
@@ -22,8 +27,14 @@ export function ResultsPage() {
     if (!sessionId) return;
     setLoading(true);
     try {
-      const data = await getResults(sessionId);
+      const [data, config, prompts] = await Promise.all([
+        getResults(sessionId),
+        getDefenseConfig(sessionId),
+        getPersonaPrompts(sessionId),
+      ]);
       setResults(data);
+      setDefenseConfig(config);
+      setPersonaPrompts(prompts);
       if (data.conversations.length > 0) {
         setSelectedConversation(data.conversations[0]);
       }
@@ -31,6 +42,35 @@ export function ResultsPage() {
       console.error('Failed to load results:', error);
     } finally {
       setLoading(false);
+    }
+  }
+
+  // Helper to get the prompt used for an attacker
+  function getAttackerPrompt(personaId: string): string {
+    if (!personaPrompts) return '';
+    // Check for custom prompt first
+    if (personaPrompts.custom_prompts[personaId]) {
+      return personaPrompts.custom_prompts[personaId];
+    }
+    // Fall back to default prompt
+    const persona = personaPrompts.personas.find(p => p.id === personaId);
+    return persona?.default_prompt || '';
+  }
+
+  // Check if benign user was run
+  const benignUserRan = results?.conversations.some(c => c.persona === 'benign_user') ?? false;
+
+  async function handleCancelSession() {
+    if (!sessionId) return;
+    if (!window.confirm('Cancel this session? This cannot be undone.')) return;
+    setCancelling(true);
+    try {
+      await cancelSession(sessionId);
+      navigate('/');
+    } catch (error) {
+      alert('Failed to cancel session');
+    } finally {
+      setCancelling(false);
     }
   }
 
@@ -60,11 +100,14 @@ export function ResultsPage() {
           <p className="text-gray-400 mt-1">Simulation Results</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => navigate('/')}>
+          <Button variant="secondary" onClick={() => navigate('/')}> 
             New Session
           </Button>
           <Button onClick={() => navigate(`/session/${sessionId}/setup`)}>
             Edit & Retry
+          </Button>
+          <Button variant="danger" onClick={handleCancelSession} disabled={cancelling}>
+            {cancelling ? 'Cancelling...' : 'Cancel Session'}
           </Button>
         </div>
       </div>
@@ -77,17 +120,30 @@ export function ResultsPage() {
             label="Security Score"
             color={session.security_score! >= 0.7 ? 'green' : session.security_score! >= 0.4 ? 'yellow' : 'red'}
           />
-          <ScoreGauge
-            score={session.usability_score ?? 1}
-            label="Usability Score"
-            color="blue"
-          />
+          {benignUserRan && (
+            <ScoreGauge
+              score={session.usability_score ?? 1}
+              label="Usability Score"
+              color="blue"
+            />
+          )}
           <div className="text-center">
             <div className="text-4xl font-bold text-gray-100">
               {secrets.filter((s) => s.is_leaked).length}/{secrets.length}
             </div>
             <div className="text-sm text-gray-400 mt-1">Secrets Leaked</div>
           </div>
+        </div>
+
+        {/* View System Prompts */}
+        <div className="flex justify-center gap-4 pt-4 border-t border-gray-700 mt-4">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setShowDefenderPrompt(true)}
+          >
+            View Defender Prompt
+          </Button>
         </div>
       </Card>
 
@@ -160,9 +216,9 @@ export function ResultsPage() {
                   }
                 >
                   {conv.outcome === 'win'
-                    ? 'Attacker Won'
+                    ? 'Attacker Win'
                     : conv.outcome === 'loss'
-                    ? 'Defended'
+                    ? 'Defender Win'
                     : conv.outcome === 'draw'
                     ? 'Draw'
                     : conv.outcome}
@@ -182,7 +238,7 @@ export function ResultsPage() {
       {selectedConversation && (
         <Card title={`Conversation: ${selectedConversation.persona.replace('_', ' ')}`}>
           <div className="space-y-4">
-            <div className="flex gap-4 text-sm">
+            <div className="flex gap-4 text-sm items-center">
               <div>
                 <span className="text-gray-400">Outcome: </span>
                 <Badge
@@ -194,13 +250,26 @@ export function ResultsPage() {
                       : 'warning'
                   }
                 >
-                  {selectedConversation.outcome}
+                  {selectedConversation.outcome === 'win'
+                    ? 'Attacker Win'
+                    : selectedConversation.outcome === 'loss'
+                    ? 'Defender Win'
+                    : selectedConversation.outcome === 'draw'
+                    ? 'Draw'
+                    : selectedConversation.outcome}
                 </Badge>
               </div>
               <div>
                 <span className="text-gray-400">Secrets Leaked: </span>
                 <span className="text-gray-200">{selectedConversation.secrets_leaked.length}</span>
               </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowAttackerPrompt(true)}
+              >
+                View Attacker Prompt
+              </Button>
             </div>
 
             {selectedConversation.extraction_results.length > 0 && (
@@ -226,7 +295,7 @@ export function ResultsPage() {
                             ) : result.defender_leak ? (
                               <Badge variant="warning">Value Leaked</Badge>
                             ) : (
-                              <Badge variant="success">Failed</Badge>
+                              <Badge variant="success">Protected</Badge>
                             )}
                           </td>
                         </tr>
@@ -243,6 +312,52 @@ export function ResultsPage() {
             </div>
           </div>
         </Card>
+      )}
+
+      {/* Defender Prompt Modal */}
+      {showDefenderPrompt && defenseConfig && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-gray-700">
+              <h3 className="text-lg font-semibold text-gray-100">Defender System Prompt</h3>
+              <button
+                onClick={() => setShowDefenderPrompt(false)}
+                className="text-gray-400 hover:text-gray-200"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto max-h-[60vh]">
+              <pre className="text-sm text-gray-200 whitespace-pre-wrap font-mono bg-gray-900 p-4 rounded-lg">
+                {defenseConfig.system_prompt}
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Attacker Prompt Modal */}
+      {showAttackerPrompt && selectedConversation && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden">
+            <div className="flex items-center justify-between p-4 border-b border-gray-700">
+              <h3 className="text-lg font-semibold text-gray-100">
+                Attacker Prompt: {selectedConversation.persona.replace('_', ' ')}
+              </h3>
+              <button
+                onClick={() => setShowAttackerPrompt(false)}
+                className="text-gray-400 hover:text-gray-200"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto max-h-[60vh]">
+              <pre className="text-sm text-gray-200 whitespace-pre-wrap font-mono bg-gray-900 p-4 rounded-lg">
+                {getAttackerPrompt(selectedConversation.persona) || 'Prompt not available'}
+              </pre>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

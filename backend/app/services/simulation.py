@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 from app.config import get_settings
-from app.models import Session, Secret, DefenseConfig
+from app.models import Session, Secret, DefenseConfig, CustomAttackerPrompt
 from app.personas import PERSONAS
 from app.services.red_team import run_persona_conversation
 from app.services.events import emit_simulation_complete, emit_error
@@ -63,6 +63,13 @@ async def run_simulation(
                 await db.commit()
                 return
 
+            # Load custom attacker prompts
+            result = await db.execute(
+                select(CustomAttackerPrompt).where(CustomAttackerPrompt.session_id == session_id)
+            )
+            custom_prompts_list = result.scalars().all()
+            custom_prompts = {cp.persona: cp.system_prompt for cp in custom_prompts_list}
+
             # Determine which personas to run
             persona_names = personas or list(PERSONAS.keys())
 
@@ -76,6 +83,9 @@ async def run_simulation(
             # For parallel execution, use run_parallel_attacks from red_team.py
             for persona_name in persona_names:
                 try:
+                    # Get custom prompt for this persona if it exists
+                    custom_prompt = custom_prompts.get(persona_name)
+
                     result = await run_persona_conversation(
                         db=db,
                         session_id=session_id,
@@ -84,6 +94,7 @@ async def run_simulation(
                         secrets=secrets,
                         max_turns=max_turns,
                         rate_limit_delay=rate_limit_delay,
+                        custom_prompt=custom_prompt,
                     )
 
                     # Track benign user responses for usability score

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Card, Badge } from '../components';
+import { Badge } from '../components';
 import { getSession, getConversations, runSimulation } from '../api/client';
 import { PERSONAS } from '../types';
 import type { SimulationResults } from '../types';
@@ -25,10 +25,10 @@ export function RunningPage() {
   const [elapsedTime, setElapsedTime] = useState(0);
   const [currentPersona, setCurrentPersona] = useState<string | null>(null);
   const [personaStatuses, setPersonaStatuses] = useState<Record<string, PersonaStatus>>({});
-  const [expandedPersona, setExpandedPersona] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [selectedTab, setSelectedTab] = useState<string | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const initStartedRef = useRef(false);  // Prevent double initialization in StrictMode
+  const userSelectedTabRef = useRef(false);  // Track if user has manually selected a tab
 
   // Get selected personas from localStorage
   const selectedPersonas: string[] = sessionId
@@ -150,66 +150,70 @@ export function RunningPage() {
 
   function updatePersonaStatuses(conversations: Conversation[]) {
     const newStatuses: Record<string, PersonaStatus> = {};
-    
+
     // Initialize all selected personas
     selectedPersonas.forEach((p) => {
       newStatuses[p] = { status: 'pending', messages: [] };
     });
-    
+
     // Find which persona is currently running (has messages but not complete)
     let foundRunning = false;
-    
+    let runningPersona: string | null = null;
+
     // Sort conversations by number of messages (most recent/active first)
     // This handles the case where there might be duplicate persona conversations
-    const sortedConvs = [...conversations].sort((a, b) => 
+    const sortedConvs = [...conversations].sort((a, b) =>
       (b.messages?.length || 0) - (a.messages?.length || 0)
     );
-    
+
     // Track which personas we've already processed
     const processedPersonas = new Set<string>();
-    
+
     sortedConvs.forEach((conv) => {
       const persona = conv.persona;
-      
+
       // Skip if not in selected personas or already processed
       if (!selectedPersonas.includes(persona) || processedPersonas.has(persona)) return;
-      
+
       processedPersonas.add(persona);
-      
+
       const isComplete = conv.outcome !== 'pending';
-      
+
       newStatuses[persona] = {
         status: isComplete ? 'completed' : 'running',
         outcome: conv.outcome,
         leaked_keys: conv.secrets_leaked || [],
         messages: conv.messages || [],
       };
-      
+
       if (!isComplete && !foundRunning) {
-        setCurrentPersona(persona);
-        setExpandedPersona(persona);
+        runningPersona = persona;
         foundRunning = true;
       }
     });
-    
+
     if (!foundRunning) {
       // Find first pending persona
       const firstPending = selectedPersonas.find(p => newStatuses[p].status === 'pending');
       if (firstPending) {
-        setCurrentPersona(firstPending);
-        setExpandedPersona(firstPending);
-      } else {
-        setCurrentPersona(null);
+        runningPersona = firstPending;
       }
     }
-    
+
+    setCurrentPersona(runningPersona);
+
+    // Only auto-select tab if user hasn't manually selected one yet
+    if (!userSelectedTabRef.current && selectedTab === null && selectedPersonas.length > 0) {
+      setSelectedTab(selectedPersonas[0]);
+    }
+
     setPersonaStatuses(newStatuses);
   }
 
-  // Scroll to bottom when new messages arrive
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [personaStatuses]);
+  function handleTabSelect(personaId: string) {
+    userSelectedTabRef.current = true;
+    setSelectedTab(personaId);
+  }
 
   // Update elapsed time
   useEffect(() => {
@@ -252,107 +256,133 @@ export function RunningPage() {
     );
   }
 
+  const selectedStatus = selectedTab ? personaStatuses[selectedTab] : null;
+
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="h-screen flex flex-col p-4">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-100">Simulation Running</h1>
-          <p className="text-gray-400 mt-1">Testing your defenses against selected attackers...</p>
+          <h1 className="text-2xl font-bold text-gray-100">Simulation Running</h1>
+          <p className="text-gray-400 text-sm">Testing your defenses against selected attackers...</p>
         </div>
         <div className="text-right">
-          <div className="text-3xl font-mono text-gray-100">{formatTime(elapsedTime)}</div>
-          <p className="text-sm text-gray-500">Elapsed time</p>
+          <div className="text-2xl font-mono text-gray-100">{formatTime(elapsedTime)}</div>
+          <p className="text-xs text-gray-500">Elapsed time</p>
         </div>
       </div>
 
-      {/* Persona Progress */}
-      <Card title="Attack Progress">
-        <div className="space-y-3">
-          {selectedPersonas.map((personaId) => {
-            const status = personaStatuses[personaId] || { status: 'pending', messages: [] };
-            const isExpanded = expandedPersona === personaId;
-            const isCurrent = currentPersona === personaId;
+      {/* Horizontal Tabs */}
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+        {selectedPersonas.map((personaId) => {
+          const status = personaStatuses[personaId] || { status: 'pending', messages: [] };
+          const isSelected = selectedTab === personaId;
+          const isCurrent = currentPersona === personaId;
 
-            return (
-              <div key={personaId} className="border border-gray-700 rounded-lg overflow-hidden">
-                {/* Header */}
-                <button
-                  onClick={() => setExpandedPersona(isExpanded ? null : personaId)}
-                  className={`w-full flex items-center justify-between p-4 transition-colors ${
-                    isCurrent ? 'bg-blue-900/30' : 'bg-gray-800 hover:bg-gray-750'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    {isCurrent && status.status === 'running' && (
-                      <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
-                    )}
-                    {status.status === 'completed' && (
-                      <div className={`w-2 h-2 rounded-full ${
-                        status.outcome === 'win' ? 'bg-red-500' : 'bg-green-500'
-                      }`}></div>
-                    )}
-                    {status.status === 'pending' && (
-                      <div className="w-2 h-2 rounded-full bg-gray-500"></div>
-                    )}
-                    <span className="font-medium text-gray-100">{getPersonaName(personaId)}</span>
-                    <span className="text-sm text-gray-400">
-                      ({status.messages.length} messages)
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {getStatusBadge(status)}
-                    <span className="text-gray-400">{isExpanded ? '▼' : '▶'}</span>
-                  </div>
-                </button>
+          return (
+            <button
+              key={personaId}
+              onClick={() => handleTabSelect(personaId)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
+                isSelected
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+              }`}
+            >
+              {/* Status indicator */}
+              {isCurrent && status.status === 'running' && (
+                <div className="w-2 h-2 rounded-full bg-blue-300 animate-pulse"></div>
+              )}
+              {status.status === 'completed' && (
+                <div className={`w-2 h-2 rounded-full ${
+                  status.outcome === 'win' ? 'bg-red-500' : 'bg-green-500'
+                }`}></div>
+              )}
+              {status.status === 'pending' && (
+                <div className="w-2 h-2 rounded-full bg-gray-500"></div>
+              )}
 
-                {/* Messages */}
-                {isExpanded && status.messages.length > 0 && (
-                  <div className="border-t border-gray-700 bg-gray-900 max-h-96 overflow-y-auto">
-                    <div className="p-4 space-y-3">
-                      {status.messages.map((msg, i) => (
-                        <div
-                          key={i}
-                          className={`p-3 rounded-lg ${
-                            msg.role === 'red_team'
-                              ? 'bg-red-900/20 border border-red-800/50 ml-0 mr-8'
-                              : 'bg-blue-900/20 border border-blue-800/50 ml-8 mr-0'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className={`text-xs font-medium ${
-                              msg.role === 'red_team' ? 'text-red-400' : 'text-blue-400'
-                            }`}>
-                              {msg.role === 'red_team' ? 'Attacker' : 'Defender'}
-                            </span>
-                            <span className="text-xs text-gray-500">Turn {msg.turn_number + 1}</span>
-                            {msg.blocked && (
-                              <Badge variant="warning">Blocked</Badge>
-                            )}
-                          </div>
-                          <p className="text-sm text-gray-200 whitespace-pre-wrap">{msg.content}</p>
-                          {msg.block_reason && (
-                            <p className="text-xs text-yellow-500 mt-1">Reason: {msg.block_reason}</p>
-                          )}
-                        </div>
-                      ))}
-                      <div ref={messagesEndRef} />
-                    </div>
-                  </div>
-                )}
+              <span className="font-medium">{getPersonaName(personaId)}</span>
+              <span className="text-xs opacity-75">({status.messages.length})</span>
+              {status.status === 'completed' && (
+                <span className={`text-xs px-1.5 py-0.5 rounded ${
+                  status.outcome === 'win'
+                    ? 'bg-red-900/50 text-red-300'
+                    : status.outcome === 'loss'
+                    ? 'bg-green-900/50 text-green-300'
+                    : 'bg-gray-700 text-gray-300'
+                }`}>
+                  {status.outcome === 'win' ? 'Leaked' : status.outcome === 'loss' ? 'Defended' : status.outcome}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
 
-                {/* Pending state */}
-                {isExpanded && status.status === 'pending' && (
-                  <div className="border-t border-gray-700 bg-gray-900 p-4">
-                    <p className="text-sm text-gray-500 text-center">Waiting to start...</p>
-                  </div>
-                )}
+      {/* Conversation Content */}
+      <div className="flex-1 bg-gray-800 rounded-lg border border-gray-700 overflow-hidden flex flex-col">
+        {selectedTab && selectedStatus ? (
+          <>
+            {/* Tab header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700 bg-gray-800/50">
+              <div className="flex items-center gap-3">
+                <span className="font-medium text-gray-100">{getPersonaName(selectedTab)}</span>
+                {getStatusBadge(selectedStatus)}
               </div>
-            );
-          })}
-        </div>
-      </Card>
+              <span className="text-sm text-gray-400">
+                {selectedStatus.messages.length} messages
+              </span>
+            </div>
 
-      {/* Current Activity */}
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {selectedStatus.messages.length > 0 ? (
+                selectedStatus.messages.map((msg, i) => (
+                  <div
+                    key={i}
+                    className={`p-3 rounded-lg ${
+                      msg.role === 'red_team'
+                        ? 'bg-red-900/20 border border-red-800/50 mr-16'
+                        : 'bg-blue-900/20 border border-blue-800/50 ml-16'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`text-xs font-medium ${
+                        msg.role === 'red_team' ? 'text-red-400' : 'text-blue-400'
+                      }`}>
+                        {msg.role === 'red_team' ? 'Attacker' : 'Defender'}
+                      </span>
+                      <span className="text-xs text-gray-500">Turn {msg.turn_number + 1}</span>
+                      {msg.blocked && (
+                        <Badge variant="warning">Blocked</Badge>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-200 whitespace-pre-wrap">{msg.content}</p>
+                    {msg.block_reason && (
+                      <p className="text-xs text-yellow-500 mt-1">Reason: {msg.block_reason}</p>
+                    )}
+                  </div>
+                ))
+              ) : selectedStatus.status === 'pending' ? (
+                <div className="flex items-center justify-center h-full text-gray-500">
+                  Waiting to start...
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-500">
+                  No messages yet
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center justify-center h-full text-gray-500">
+            Select an attacker tab to view the conversation
+          </div>
+        )}
+      </div>
+
+      {/* Current Activity Indicator */}
       {currentPersona && personaStatuses[currentPersona]?.status === 'running' && (
         <div className="fixed bottom-4 right-4 bg-gray-800 border border-gray-700 rounded-lg p-4 shadow-lg">
           <div className="flex items-center gap-3">

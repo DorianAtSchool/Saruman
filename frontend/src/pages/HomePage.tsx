@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button, Card, Badge } from '../components';
 import { createSession, listSessions } from '../api/client';
 import type { Session } from '../types';
+import { PERSONAS } from '../types';
 
 export function HomePage() {
   const navigate = useNavigate();
@@ -63,6 +64,11 @@ export function HomePage() {
         <p className="text-gray-500 mt-2">
           Configure your AI defense and test it against Red Team attackers
         </p>
+        <div className="mt-6">
+          <Button variant="secondary" onClick={() => navigate('/experiments')}>
+            Run Experiments
+          </Button>
+        </div>
       </div>
 
       <Card title="Create New Session">
@@ -93,50 +99,70 @@ export function HomePage() {
               {sessions.map((session) => (
                 <div
                   key={session.id}
-                  className="flex items-center justify-between p-4 bg-gray-700/50 rounded-lg hover:bg-gray-700 transition-colors"
+                  className="p-4 bg-gray-700/50 rounded-lg hover:bg-gray-700 transition-colors"
                 >
-                  <div className="flex items-center gap-4">
-                    <div>
-                      <h3 className="font-medium text-gray-100">{session.name}</h3>
-                      <p className="text-sm text-gray-400">
-                        {new Date(session.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <Badge variant={statusVariant(session.status)}>
-                      {session.status}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    {session.security_score !== null && (
-                      <div className="text-sm">
-                        <span className="text-gray-400">Security: </span>
-                        <span
-                          className={
-                            session.security_score >= 0.7
-                              ? 'text-green-400'
-                              : session.security_score >= 0.4
-                              ? 'text-yellow-400'
-                              : 'text-red-400'
-                          }
-                        >
-                          {Math.round(session.security_score * 100)}%
-                        </span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div>
+                        <h3 className="font-medium text-gray-100">{session.name}</h3>
+                        <p className="text-sm text-gray-400">
+                          {new Date(session.created_at).toLocaleDateString()}
+                        </p>
                       </div>
-                    )}
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() =>
-                        navigate(
-                          session.status === 'completed'
-                            ? `/session/${session.id}/results`
-                            : `/session/${session.id}/setup`
-                        )
-                      }
-                    >
-                      {session.status === 'completed' ? 'View Results' : 'Continue'}
-                    </Button>
+                      <Badge variant={statusVariant(session.status)}>
+                        {session.status}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      {session.security_score !== null && (
+                        <div className="text-sm">
+                          <span className="text-gray-400">Security: </span>
+                          <span
+                            className={
+                              session.security_score >= 0.7
+                                ? 'text-green-400'
+                                : session.security_score >= 0.4
+                                ? 'text-yellow-400'
+                                : 'text-red-400'
+                            }
+                          >
+                            {Math.round(session.security_score * 100)}%
+                          </span>
+                        </div>
+                      )}
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() =>
+                          navigate(
+                            session.status === 'completed'
+                              ? `/session/${session.id}/results`
+                              : `/session/${session.id}/setup`
+                          )
+                        }
+                      >
+                        {session.status === 'completed' ? 'View Results' : 'Continue'}
+                      </Button>
+                    </div>
                   </div>
+                  {/* Show simulation config for completed sessions */}
+                  {session.status === 'completed' && session.selected_personas && session.selected_personas.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-gray-600 text-sm text-gray-400">
+                      <span>Attackers: </span>
+                      <span className="text-gray-300">
+                        {session.selected_personas.map(id =>
+                          PERSONAS.find(p => p.id === id)?.name || id
+                        ).join(', ')}
+                      </span>
+                      {session.max_turns && (
+                        <>
+                          <span className="mx-2">|</span>
+                          <span>Turns: </span>
+                          <span className="text-gray-300">{session.max_turns}</span>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

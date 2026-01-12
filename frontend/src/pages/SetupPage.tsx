@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Button, Card, Input, TextArea, Select } from '../components';
+import { Button, Card, Input, Select } from '../components';
 import {
   getSession,
   getSecrets,
@@ -9,27 +9,14 @@ import {
   deleteSecret,
   getDefenseConfig,
   updateDefenseConfig,
+  getDefenderTemplates,
+  type DefenderTemplate,
 } from '../api/client';
 import type { Session, Secret, RegexRule } from '../types';
 import { SECRET_TYPES } from '../types';
 
-const MODELS = [
-  // Groq Models (Free tier - very fast) - Default
-  { value: 'groq/llama-3.1-8b-instant', label: 'Llama 3.1 8B (Groq) - Free' },
-  { value: 'groq/gemma2-9b-it', label: 'Gemma 2 9B (Groq) - Free' },
-  { value: 'groq/mixtral-8x7b-32768', label: 'Mixtral 8x7B (Groq) - Free' },
-  // Commercial Models
-  { value: 'gemini/gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash Lite' },
-  { value: 'gemini/gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite' },
-  { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-  { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku' },
-  // Open Source via HuggingFace
-  { value: 'huggingface/together/meta-llama/Llama-3.2-3B-Instruct', label: 'Llama 3.2 3B (Together)' },
-  { value: 'huggingface/together/deepseek-ai/DeepSeek-R1', label: 'DeepSeek R1 (Together)' },
-  { value: 'huggingface/sambanova/Qwen/Qwen2.5-72B-Instruct', label: 'Qwen 2.5 72B (Sambanova)' },
-];
+import { MODELS } from '../models';
 
-export { MODELS };
 
 export function SetupPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -54,6 +41,34 @@ export function SetupPage() {
   const [newSecretKey, setNewSecretKey] = useState('');
   const [newSecretValue, setNewSecretValue] = useState('');
 
+  // Defender templates
+  const [defenderTemplates, setDefenderTemplates] = useState<DefenderTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+
+  // Refs for auto-resizing textareas
+  const beforeTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const afterTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-resize textareas when content changes
+  useEffect(() => {
+    // Use requestAnimationFrame to ensure DOM has updated
+    requestAnimationFrame(() => {
+      if (beforeTextareaRef.current) {
+        beforeTextareaRef.current.style.height = 'auto';
+        beforeTextareaRef.current.style.height = beforeTextareaRef.current.scrollHeight + 'px';
+      }
+    });
+  }, [promptBefore, loading]);
+
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      if (afterTextareaRef.current) {
+        afterTextareaRef.current.style.height = 'auto';
+        afterTextareaRef.current.style.height = afterTextareaRef.current.scrollHeight + 'px';
+      }
+    });
+  }, [promptAfter, loading]);
+
   useEffect(() => {
     if (sessionId) {
       loadData();
@@ -64,11 +79,13 @@ export function SetupPage() {
     if (!sessionId) return;
     setLoading(true);
     try {
-      const [sessionData, secretsData, configData] = await Promise.all([
+      const [sessionData, secretsData, configData, templates] = await Promise.all([
         getSession(sessionId),
         getSecrets(sessionId),
         getDefenseConfig(sessionId),
+        getDefenderTemplates(),
       ]);
+      setDefenderTemplates(templates);
       setSession(sessionData);
       setSecrets(secretsData);
       // Update selectedTypes based on existing secrets
@@ -79,15 +96,28 @@ export function SetupPage() {
       if (configData) {
         // Split system prompt on {{SECRETS}} placeholder
         const prompt = configData.system_prompt || '';
+        let beforePart = '';
+        let afterPart = '';
+        
         if (prompt.includes('{{SECRETS}}')) {
           const [before, after] = prompt.split('{{SECRETS}}');
-          setPromptBefore(before.trim());
-          setPromptAfter(after.trim());
+          beforePart = before.trim();
+          afterPart = after.trim();
         } else {
           // No placeholder found - put everything in before
-          setPromptBefore(prompt);
-          setPromptAfter('');
+          beforePart = prompt;
+          afterPart = '';
         }
+        
+        setPromptBefore(beforePart);
+        setPromptAfter(afterPart);
+        
+        // Try to match against a template (only check beforePart since templates don't have {{SECRETS}})
+        const matchedTemplate = templates.find(t => t.prompt.trim() === beforePart);
+        if (matchedTemplate) {
+          setSelectedTemplateId(matchedTemplate.id);
+        }
+        
         setModelName(configData.model_name || MODELS[0].value);
         setJudgeEnabled(configData.judge_enabled || false);
         setJudgePrompt(configData.judge_prompt || '');
@@ -188,38 +218,6 @@ export function SetupPage() {
     const saved = await handleSaveConfig();
     if (saved) {
       navigate(`/session/${sessionId}/run`);
-    }
-  }
-
-  function addRegexRule(type: 'input' | 'output') {
-    const newRule: RegexRule = { pattern: '', action: 'block', message: '' };
-    if (type === 'input') {
-      setRegexInputRules([...regexInputRules, newRule]);
-    } else {
-      setRegexOutputRules([...regexOutputRules, newRule]);
-    }
-  }
-
-  function updateRegexRule(
-    type: 'input' | 'output',
-    index: number,
-    field: keyof RegexRule,
-    value: string
-  ) {
-    const rules = type === 'input' ? [...regexInputRules] : [...regexOutputRules];
-    rules[index] = { ...rules[index], [field]: value };
-    if (type === 'input') {
-      setRegexInputRules(rules);
-    } else {
-      setRegexOutputRules(rules);
-    }
-  }
-
-  function removeRegexRule(type: 'input' | 'output', index: number) {
-    if (type === 'input') {
-      setRegexInputRules(regexInputRules.filter((_, i) => i !== index));
-    } else {
-      setRegexOutputRules(regexOutputRules.filter((_, i) => i !== index));
     }
   }
 
@@ -364,6 +362,38 @@ export function SetupPage() {
             onChange={(e) => setModelName(e.target.value)}
           />
 
+          {/* Defender Template Selection */}
+          {defenderTemplates.length > 0 && (
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Defender Personality Template
+              </label>
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                {defenderTemplates.map((template) => {
+                  const isSelected = selectedTemplateId === template.id;
+                  return (
+                    <button
+                      key={template.id}
+                      onClick={() => {
+                        setSelectedTemplateId(template.id);
+                        setPromptBefore(template.prompt);
+                        setPromptAfter('');
+                      }}
+                      className={`p-3 text-left border rounded-lg transition-colors ${
+                        isSelected
+                          ? 'border-blue-500 bg-blue-900/30 ring-2 ring-blue-500'
+                          : 'border-gray-600 hover:border-blue-500 hover:bg-blue-900/20'
+                      }`}
+                    >
+                      <div className="font-medium text-gray-200">{template.name}</div>
+                      <div className="text-xs text-gray-400 mt-1 line-clamp-2">{template.prompt.slice(0, 100)}...</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
               System Prompt
@@ -371,13 +401,18 @@ export function SetupPage() {
             <div className="border border-gray-600 rounded-lg overflow-hidden bg-gray-800">
               {/* Before secrets */}
               <textarea
+                ref={beforeTextareaRef}
                 className="w-full bg-transparent text-gray-100 p-3 resize-none focus:outline-none border-none"
                 placeholder="Instructions before secrets are listed..."
                 value={promptBefore}
-                onChange={(e) => setPromptBefore(e.target.value)}
+                onChange={(e) => {
+                  setPromptBefore(e.target.value);
+                  setSelectedTemplateId(null); // Clear selection when manually editing
+                }}
                 rows={3}
+                style={{ minHeight: '80px' }}
               />
-              
+
               {/* Secrets badge - non-editable */}
               <div className="flex items-center gap-2 px-3 py-2 bg-gray-700/50 border-y border-gray-600">
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-600 text-white text-sm font-medium">
@@ -388,14 +423,19 @@ export function SetupPage() {
                 </span>
                 <span className="text-xs text-gray-400">← Your secrets will be inserted here</span>
               </div>
-              
+
               {/* After secrets */}
               <textarea
+                ref={afterTextareaRef}
                 className="w-full bg-transparent text-gray-100 p-3 resize-none focus:outline-none border-none"
                 placeholder="Instructions after secrets are listed..."
                 value={promptAfter}
-                onChange={(e) => setPromptAfter(e.target.value)}
+                onChange={(e) => {
+                  setPromptAfter(e.target.value);
+                  setSelectedTemplateId(null); // Clear selection when manually editing
+                }}
                 rows={3}
+                style={{ minHeight: '80px' }}
               />
             </div>
           </div>
